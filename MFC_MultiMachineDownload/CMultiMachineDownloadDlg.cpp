@@ -180,13 +180,12 @@ void CMultiMachineDownloadDlg::OnClickedButtonStart()
 void CMultiMachineDownloadDlg::OnBnClickedButtonSuspend()
 {
 	// TODO: 在此添加控件通知处理程序代码
-	CTaskConfigFile myConfigFile;
-	CString path = _T("d:\\test.tmp");
-	CFile myFile(path, CFile::modeRead);
-	CArchive ar(&myFile, CArchive::load);
-	myConfigFile.Serialize(ar);
-	m_cListBoxDownloadOutPut.AddString(myConfigFile.m_strLink);
-	m_cListBoxDownloadOutPut.AddString(myConfigFile.m_strFileName);
-	m_cListBoxDownloadOutPut.AddString(myConfigFile.m_strSavePath);
-	//m_cListBoxDownloadOutPut.AddString();
+	//CTaskConfigFile myConfigFile;
+	//CString path = _T("d:\\test.tmp");
+	//CFile myFile(path, CFile::modeRead);
+	//CArchive ar(&myFile, CArchive::load);
+	//myConfigFile.Serialize(ar);
+	//m_cListBoxDownloadOutPut.AddString(myConfigFile.m_strLink);
+	//m_cListBoxDownloadOutPut.AddString(myConfigFile.m_strFileName);
+	//m_cListBoxDownloadOutPut.AddString(myConfigFile.m_strSavePath);
 }
