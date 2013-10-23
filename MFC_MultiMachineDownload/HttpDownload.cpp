@@ -1,7 +1,11 @@
 #include "stdafx.h"
 #include "HttpDownload.h"
+#include "ThreadTask.h"
 
 #define HTTP_STATUS_REQUEST_RANGE_NOT_STATISFIABLE 416 //服务器不支持断点续传
+#define BUFFSIZE 5120 //一次接收5KB
+
+using std::auto_ptr;
 
 //CHttpDownload::CHttpDownload(CTaskConfigFile* configInfo, CString strURL,
 //							 CString strServer, CString strObject, DWORD dwServiceType, INTERNET_PORT nPort):
@@ -10,8 +14,8 @@
 //{
 //}
 
-CHttpDownload::CHttpDownload(CString strURL, CString strSavePath, SHORT sThreadsSum): 
-	m_strURL(strURL), m_strSavePath(strSavePath)
+HttpDownload::HttpDownload(CString strURL, CString strSavePath, SHORT sThreadsSum, CMultiMachineDownloadDlg* pWnd): 
+	m_strURL(strURL), m_strSavePath(strSavePath),m_pConfigInfo(nullptr), m_sThreadsSum(sThreadsSum), m_Stop(FALSE), m_pWnd(pWnd), m_Finished(FALSE)
 {
 	::AfxParseURL(m_strURL, m_dwServiceType, m_strServer, m_strObject, m_nPort);
 	for(SHORT i = 0; i < sThreadsSum; ++i)
@@ -20,91 +24,235 @@ CHttpDownload::CHttpDownload(CString strURL, CString strSavePath, SHORT sThreads
 	}
 }
 
-CHttpDownload::~CHttpDownload(void)
+HttpDownload::HttpDownload(const HttpDownload& hd)
 {
-	if(!m_pConfigInfo)
-		delete m_pConfigInfo;
 }
 
-BOOL CHttpDownload::GetInfor()
+HttpDownload::~HttpDownload(void)
+{
+	Release();
+}
+
+VOID HttpDownload::Release()
+{
+	if(m_pConfigInfo)
+	{
+		delete m_pConfigInfo;
+		m_pConfigInfo = nullptr;
+	}
+
+	for(int i =0; i < m_sThreadsSum; ++i)
+	{
+		if(m_threadsList[i])
+			delete m_threadsList[i];
+	}
+}
+
+BOOL HttpDownload::GetInfor()
 {
 	CInternetSession innetSession;
-	CHttpFile* pHttpFile(nullptr);
-	CHttpConnection* pHttpConn(nullptr);
+	auto_ptr<CHttpFile> pHttpFile;
+	auto_ptr<CHttpConnection> pHttpConn;
 	
 	try
 	{
-		pHttpConn = innetSession.GetHttpConnection(m_strServer, m_nPort);
-		pHttpFile = pHttpConn->OpenRequest(CHttpConnection::HTTP_VERB_GET, m_strObject);
-		if(!pHttpFile)
+		pHttpConn.reset(innetSession.GetHttpConnection(m_strServer, m_nPort));
+		pHttpFile.reset(pHttpConn->OpenRequest(CHttpConnection::HTTP_VERB_HEAD, m_strObject));
+		if(!pHttpFile.get())
 		{
 #ifdef DEBUG
-			TRACE0("Open request error!");
+			TRACE("Open request error!\n");
+			::AfxMessageBox(_T("Open request error!\n"));
 #endif
-			delete pHttpConn;
 			innetSession.Close();
 			return FALSE;
 		}
 
 		CString strRange(_T("Range: bytes=10-\r\n"));//用于判断服务器是否支持断点续传
-		pHttpFile->AddRequestHeaders(strRange);
-		pHttpFile->SendRequest();
+		if(!pHttpFile->AddRequestHeaders(strRange))
+		{
+#ifdef DEBUG
+			TRACE("AddRequestHeaders() error.\n");
+#endif
+		}
+		if(!pHttpFile->SendRequest())
+		{
+#ifdef DEBUG
+			TRACE("SendRequest()) error.\n");
+#endif
+		}
 		pHttpFile->QueryInfoStatusCode(m_dwStatus);
 		if(m_dwStatus >= 200 && m_dwStatus < 300)//请求成功
 		{
-			ULONGLONG lFileSize = pHttpFile->GetLength();
-			m_pConfigInfo = new CTaskConfigFile(m_strURL, m_strSavePath, lFileSize, m_sThreadsSum);
+			DWORD dwFileSize;
+			pHttpFile->QueryInfo(HTTP_QUERY_CONTENT_LENGTH, dwFileSize);
+			m_pConfigInfo = new TaskConfigFile(m_strURL, m_strSavePath, dwFileSize, m_sThreadsSum);
 			m_pConfigInfo->m_strFileName = pHttpFile->GetFileName();
-			Download();
+			m_pConfigInfo->m_strSavePath += pHttpFile->GetFileName();
+			//Download();
 		}
-		else
+		else//单线程
 		{
 #ifdef DEBUG
-			TRACE0("Send request error!");
+			TRACE("Send request error!\n");
 			::AfxMessageBox(_T("服务器不支持断点续传！"));
 #endif
-			delete pHttpFile;
-			delete pHttpConn;
-			innetSession.Close();
-			return FALSE;
+			m_sThreadsSum = 1;//单线程下载
+			DWORD dwFileSize;
+			pHttpFile->QueryInfo(HTTP_QUERY_CONTENT_LENGTH, dwFileSize);
+			m_pConfigInfo = new TaskConfigFile(m_strURL, m_strSavePath, dwFileSize, m_sThreadsSum);
+			m_pConfigInfo->m_strFileName = pHttpFile->GetFileName();
+			m_pConfigInfo->m_strSavePath += pHttpFile->GetFileName();
 		}
-
+		
 
 	}
 	catch(CInternetException* internetEx)
 	{
 		internetEx->ReportError();
 		internetEx->Delete();
-		if(pHttpConn != nullptr)
-			delete pHttpConn;
-		if(pHttpFile != nullptr)
-			delete pHttpFile;
+		innetSession.Close();
 	}
-	
+	catch(CException* e)
+	{
+		e->ReportError();
+		e->Delete();
+		innetSession.Close();
+	}
 
+	innetSession.Close();
 	return TRUE;
 }
 
-UINT CHttpDownload::ReceiveData(LPVOID pParam)
+UINT HttpDownload::ReceiveData(LPVOID pParam)
 {
-	CTaskConfigFile* fileInfo = static_cast<CTaskConfigFile*>(pParam);
+	CHAR* pBuff(nullptr);
+	auto_ptr<ThreadTask> pTaskInfo(static_cast<ThreadTask*>(pParam));
+	auto_ptr<CHttpFile> httpFile;
 	CInternetSession session;
-	CHttpFile* httpFile;
-	//统一以二进制流传输
-	DWORD dwFlags = INTERNET_FLAG_TRANSFER_BINARY | INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE;
+#ifdef DEBUG
+	DWORD dwThreadID;
+	dwThreadID = ::GetCurrentThreadId();
+#endif
 
-	httpFile = static_cast<CHttpFile*>(session.OpenURL(fileInfo->m_strLink, 1, dwFlags));
+	try
+	{
+		//统一以二进制流传输
+		DWORD dwFlags = INTERNET_FLAG_TRANSFER_BINARY | INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE;
+		CString strRange;
+		DWORD dwStatus(0);
+		ULONGLONG sizeValue(0);//本分块已下载的大小
+		pTaskInfo->m_downloadInfor->m_pConfigInfo->m_mapBlockDownloadedSize.Lookup(pTaskInfo->m_blockStart, sizeValue);
+		ULONGLONG start(pTaskInfo->m_blockStart + sizeValue);
+		ULONGLONG end(pTaskInfo->m_blockStart + pTaskInfo->m_downloadInfor->m_pConfigInfo->m_lBlockSize);
+		if(pTaskInfo->m_isLastBlock)
+			strRange.Format(_T("Range: bytes=%llu-\r\n"), start);
+		else	
+			strRange.Format(_T("Range: bytes=%llu-%llu\r\n"), start, end);
 
+		httpFile.reset(static_cast<CHttpFile*>(session.OpenURL(pTaskInfo->m_downloadInfor->m_pConfigInfo->m_strLink, 1, dwFlags)));
+		if(!httpFile->AddRequestHeaders(strRange))
+		{
+#ifdef DEBUG
+			TRACE("AddRequestHeaders() error.\n");
+#endif
+		}
+		if(!httpFile->SendRequest())
+		{
+#ifdef DEBUG
+			TRACE("SendRequest()) error.\n");
+#endif
+		}
+		httpFile->QueryInfoStatusCode(dwStatus);
+
+		if(dwStatus >= 200 && dwStatus < 300)//请求成功
+		{
+			CFile downloadFile(pTaskInfo->m_downloadInfor->m_pConfigInfo->m_strSavePath, CFile::modeCreate | CFile::modeWrite | CFile::shareExclusive);
+			CFile configFile(pTaskInfo->m_downloadInfor->m_pConfigInfo->m_strSavePath + ".tmp", CFile::modeCreate | CFile::modeWrite| CFile::shareExclusive);
+			CArchive ar(&configFile, CArchive::store);
+			UINT dwRead(1);
+			DWORD dwDownloadStatus;
+
+			//downloadFile.SetLength(pTaskInfo->m_downloadInfor->m_pConfigInfo->m_lFileSize);
+			downloadFile.Seek(start, CHttpFile::begin);
+			pBuff = new CHAR[BUFFSIZE];
+#ifdef DEBUG
+			TRACE("Thread %d, starting download......\n", dwThreadID);
+#endif
+			while(dwRead && !pTaskInfo->m_downloadInfor->m_Stop)
+			{
+				::ZeroMemory(pBuff, BUFFSIZE);//清空缓冲区
+				dwRead = httpFile->Read(pBuff, BUFFSIZE);
+#ifdef DEBUG
+				TRACE("Thread %d, received %llu byte！\n", dwThreadID, dwRead);
+#endif
+				pTaskInfo->m_downloadInfor->m_cs.Lock();//进入临界区
+				downloadFile.Write(pBuff, dwRead);
+				dwDownloadStatus = pTaskInfo->m_downloadInfor->m_pConfigInfo->AddDownloadedSize(pTaskInfo->m_blockStart, sizeValue);//更新已下载的大小
+				if(DOWNLOAD_FINISHED == dwDownloadStatus)
+					pTaskInfo->m_downloadInfor->m_Finished = TRUE;
+				pTaskInfo->m_downloadInfor->m_pConfigInfo->Serialize(ar);//保存文件信息
+				pTaskInfo->m_downloadInfor->m_cs.Unlock();//离开临界区
+			}
+
+#ifdef DEBUG
+			TRACE("Thread %d download finished！\n", dwThreadID);
+#endif
+			downloadFile.Close();
+			configFile.Close();
+		}
+		else
+		{
+#ifdef DEBUG
+			TRACE("Request error in ReceiveData funtion!\n");
+			::AfxMessageBox(_T("fuck!"));
+#endif
+		}
+	}
+	catch (CMemoryException* e)
+	{
+		e->ReportError();
+		e->Delete();
+		delete[] pBuff;
+	}
+	catch (CFileException* e)
+	{
+		e->ReportError();
+		e->Delete();
+		delete[] pBuff;
+	}
+	catch (CException* e)
+	{
+		e->ReportError();
+		e->Delete();
+		delete[] pBuff;
+	}
+
+	delete[] pBuff;
+	if(pTaskInfo->m_downloadInfor->m_Finished == TRUE)
+	{
+		::PostMessage(pTaskInfo->m_downloadInfor->m_pWnd->m_hWnd, WM_USER_DOWNLOAD_FINISHED, 0, (LPARAM)pTaskInfo->m_downloadInfor);
+	}
 	return 0;
 }
 
-BOOL CHttpDownload::Download(CTaskConfigFile* configInfo = nullptr)
+BOOL HttpDownload::Download(TaskConfigFile* configInfo)
 {
+	if(!GetInfor())
+		::AfxMessageBox(_T("无法获取文件信息，请确认下载链接是否有错。"));
 	if(configInfo)
 		m_pConfigInfo = configInfo;
-	for(SHORT i = 0; i < m_pConfigInfo->m_sThreadsSum; ++i)
+	POSITION pos = m_pConfigInfo->m_mapBlockDownloadedSize.GetStartPosition();
+	for(SHORT i = 0; i < m_sThreadsSum; ++i)
 	{
-		m_threadsList[i] = ::AfxBeginThread(ReceiveData, (LPVOID)m_pConfigInfo);
+		ThreadTask* myTask = new ThreadTask(this);
+		m_pConfigInfo->m_mapBlockDownloadedSize.GetNextAssoc(pos, myTask->m_blockStart, myTask->m_blockSize);
+		if(i == m_sThreadsSum -1)
+			myTask->m_isLastBlock = TRUE;
+		m_threadsList[i] = ::AfxBeginThread(ReceiveData, (LPVOID)myTask);
+#ifdef DEBUG
+		TRACE("Thread %d start...\n", m_threadsList[i]->m_nThreadID);
+#endif
 	}
 	return TRUE;
 }

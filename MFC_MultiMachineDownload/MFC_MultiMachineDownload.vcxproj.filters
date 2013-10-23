@@ -39,6 +39,9 @@
     <ClInclude Include="HttpDownload.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="ThreadTask.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="MFC_MultiMachineDownload.cpp">
@@ -54,6 +57,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="HttpDownload.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ThreadTask.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

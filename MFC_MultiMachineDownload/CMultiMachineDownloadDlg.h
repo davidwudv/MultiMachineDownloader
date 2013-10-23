@@ -4,6 +4,8 @@
 
 #pragma once
 #include "afxwin.h"
+#include "resource.h"
+#define WM_USER_DOWNLOAD_FINISHED WM_USER + 0x100 //下载任务完成时发送的消息
 
 
 // CMultiMachineDownloadDlg 对话框
@@ -29,13 +31,17 @@ protected:
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
+	afx_msg LRESULT OnDownloadFinished(WPARAM wParam, LPARAM lParam);
 	DECLARE_MESSAGE_MAP()
 public:
-	CString m_pstrURL;
-	CString m_pstrSavePath;
+	CString m_strURL;
+	CString m_strSavePath;
 	short m_iThreads;
-	CString m_pstrIP;
+	CString m_strIP;
 	afx_msg void OnClickedButtonStart();
 	afx_msg void OnBnClickedButtonSuspend();
 	CListBox m_cListBoxDownloadOutPut;
+
+private:
+	//HttpDownload* TaskList
 };

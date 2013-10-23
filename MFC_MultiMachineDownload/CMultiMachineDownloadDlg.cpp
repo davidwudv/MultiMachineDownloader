@@ -7,6 +7,7 @@
 #include "CMultiMachineDownloadDlg.h"
 #include "afxdialogex.h"
 #include "TaskConfigFile.h"
+#include "HttpDownload.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -50,10 +51,10 @@ END_MESSAGE_MAP()
 
 CMultiMachineDownloadDlg::CMultiMachineDownloadDlg(CWnd* pParent /*=NULL*/)
 	: CDialogEx(CMultiMachineDownloadDlg::IDD, pParent)
-	, m_pstrURL(_T(""))
-	, m_pstrSavePath(_T(""))
+	, m_strURL(_T(""))
+	, m_strSavePath(_T(""))
 	, m_iThreads(0)
-	, m_pstrIP(_T(""))
+	, m_strIP(_T(""))
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
@@ -61,10 +62,10 @@ CMultiMachineDownloadDlg::CMultiMachineDownloadDlg(CWnd* pParent /*=NULL*/)
 void CMultiMachineDownloadDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
-	DDX_Text(pDX, IDC_EDIT_URL, m_pstrURL);
-	DDX_Text(pDX, IDC_EDIT_SAVEPAHT, m_pstrSavePath);
+	DDX_Text(pDX, IDC_EDIT_URL, m_strURL);
+	DDX_Text(pDX, IDC_EDIT_SAVEPAHT, m_strSavePath);
 	DDX_Text(pDX, IDC_EDIT_THREADS, m_iThreads);
-	DDX_Text(pDX, IDC_EDIT_MACHINEIP, m_pstrIP);
+	DDX_Text(pDX, IDC_EDIT_MACHINEIP, m_strIP);
 	DDX_Control(pDX, IDC_DOWNLOAD_OUTPUT_LIST, m_cListBoxDownloadOutPut);
 }
 
@@ -74,6 +75,7 @@ BEGIN_MESSAGE_MAP(CMultiMachineDownloadDlg, CDialogEx)
 	ON_WM_QUERYDRAGICON()
 	ON_BN_CLICKED(IDC_BUTTON_START, &CMultiMachineDownloadDlg::OnClickedButtonStart)
 	ON_BN_CLICKED(IDC_BUTTON_SUSPEND, &CMultiMachineDownloadDlg::OnBnClickedButtonSuspend)
+	ON_MESSAGE(WM_USER_DOWNLOAD_FINISHED, OnDownloadFinished)
 END_MESSAGE_MAP()
 
 
@@ -109,6 +111,10 @@ BOOL CMultiMachineDownloadDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// 设置小图标
 
 	// TODO: 在此添加额外的初始化代码
+	m_strURL = "http://dldir1.qq.com/qqfile/qq/QQ2013/QQ2013SP3/8557/QQ2013SP3.exe";
+	m_strSavePath = "D:\\";
+	m_iThreads = 5;
+	UpdateData(FALSE);
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -168,24 +174,25 @@ void CMultiMachineDownloadDlg::OnClickedButtonStart()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	UpdateData(TRUE);
-	CTaskConfigFile myConfigFile(m_pstrURL, m_pstrSavePath, 10000L, 5);
-	myConfigFile.m_strFileName = _T("test.tmp");
-	CString path = myConfigFile.m_strSavePath + myConfigFile.m_strFileName;
-	CFile myFile(path, CFile::modeCreate | CFile::modeWrite);
-	CArchive ar(&myFile, CArchive::store);
-	myConfigFile.Serialize(ar);
+#ifdef DEBUG
+	DWORD dwThreadID;
+	dwThreadID = ::GetCurrentThreadId();
+	TRACE("Thread %d download finished%d！\n", dwThreadID, dwThreadID);
+#endif
+	HttpDownload* myDownload = new HttpDownload(m_strURL, m_strSavePath, m_iThreads, this);
+	myDownload->Download(nullptr);
 }
 
 
 void CMultiMachineDownloadDlg::OnBnClickedButtonSuspend()
 {
-	// TODO: 在此添加控件通知处理程序代码
-	//CTaskConfigFile myConfigFile;
-	//CString path = _T("d:\\test.tmp");
-	//CFile myFile(path, CFile::modeRead);
-	//CArchive ar(&myFile, CArchive::load);
-	//myConfigFile.Serialize(ar);
-	//m_cListBoxDownloadOutPut.AddString(myConfigFile.m_strLink);
-	//m_cListBoxDownloadOutPut.AddString(myConfigFile.m_strFileName);
-	//m_cListBoxDownloadOutPut.AddString(myConfigFile.m_strSavePath);
+	
+}
+
+LRESULT CMultiMachineDownloadDlg::OnDownloadFinished(WPARAM wParam, LPARAM lParam)
+{
+	HttpDownload* hd = (HttpDownload*)lParam;
+	::AfxMessageBox(_T("下载完成！"));
+	delete hd;
+	return 0;
 }
