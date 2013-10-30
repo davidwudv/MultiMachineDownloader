@@ -44,4 +44,11 @@ public:
 
 private:
 	//HttpDownload* TaskList
+public:
+	afx_msg void OnBnClickedButtonAddip();
+	CListBox m_cIPList;
+	afx_msg void OnBnClickedButtonDeleteip();
+	CButton m_cButtonDeleteIP;
+	afx_msg void OnLbnSetfocusIpList();
+	afx_msg void OnLbnSelcancelIpList();
 };

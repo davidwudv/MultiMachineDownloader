@@ -9,7 +9,7 @@ TaskConfigFile::TaskConfigFile(void):
 {
 }
 
-TaskConfigFile::TaskConfigFile(CString strLink, CString strSavePath, ULONGLONG lFileSize, SHORT sThreads = 5):
+TaskConfigFile::TaskConfigFile(CString strLink, CString strSavePath, UINT64 lFileSize, SHORT sThreads = 5):
 	m_strLink(strLink), m_strFileName(""),m_strSavePath(strSavePath), m_lFileSize(lFileSize), 
 	m_lSumDownloadedSize(0L), m_sThreadsSum(sThreads), m_mapBlockDownloadedSize(sThreads)
 {
@@ -17,14 +17,13 @@ TaskConfigFile::TaskConfigFile(CString strLink, CString strSavePath, ULONGLONG l
 	{
 		m_lBlockSize = m_lFileSize;
 		m_lLastBlockSize = m_lFileSize;
-		ULONGLONG startKey(0L);
-		m_mapBlockDownloadedSize.SetAt(startKey, m_lFileSize);
+		UINT64 startKey(0L);
+		m_mapBlockDownloadedSize.SetAt(startKey, 0);
 		return;
 	}
 	m_lBlockSize = m_lFileSize / m_sThreadsSum;
 	m_lLastBlockSize = m_lBlockSize + (m_lFileSize % m_sThreadsSum);//余下部分由最后一个线程负责下载
-	ULONGLONG startKey;
-	ULONGLONG downloadSize(0L);
+	UINT64 startKey;
 
 	for(int i = 0; i < m_sThreadsSum; ++i)
 	{
@@ -32,7 +31,7 @@ TaskConfigFile::TaskConfigFile(CString strLink, CString strSavePath, ULONGLONG l
 			startKey = 0;
 		else
 			startKey = i * m_lBlockSize + 1;
-		m_mapBlockDownloadedSize.SetAt(startKey, downloadSize);
+		m_mapBlockDownloadedSize.SetAt(startKey, 0);
 	}
 }
 
@@ -44,18 +43,18 @@ TaskConfigFile::~TaskConfigFile(void)
 {
 }
 
-DWORD TaskConfigFile::AddDownloadedSize( ULONGLONG blockIndex, ULONGLONG& blockDownloadedSize )
+BOOL TaskConfigFile::AddDownloadedSize( UINT64 &blockIndex, UINT64 blockDownloadedSize )
 {
-	ULONGLONG oldValue;
-	ULONGLONG newValue;
+	UINT64 oldValue;
+	UINT64 newValue;
 	m_mapBlockDownloadedSize.Lookup(blockIndex, oldValue);
 	newValue = oldValue + blockDownloadedSize;
 	m_mapBlockDownloadedSize.SetAt(blockIndex, newValue);//更新某分块已下载大小
-	m_lSumDownloadedSize += newValue;//更新已下载总大小
+	m_lSumDownloadedSize += blockDownloadedSize;//更新已下载总大小
 
 	if(m_lSumDownloadedSize == m_lFileSize)
-		return DOWNLOAD_FINISHED;
-	return DOWNLOADING;
+		return TRUE;
+	return FALSE;
 }
 
 VOID TaskConfigFile::Serialize(CArchive& ar)

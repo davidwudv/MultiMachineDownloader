@@ -7,9 +7,10 @@ class ThreadTask
 public:
 	ThreadTask(void);
 	ThreadTask(HttpDownload*);
-	ThreadTask(ULONGLONG start, ULONGLONG size, HttpDownload* download);
-	ULONGLONG m_blockStart;//资源分块的开始坐标
-	ULONGLONG m_blockSize;//资源分块的大小
+	ThreadTask(UINT64 start, UINT64 size, HttpDownload* download);
+	UINT64 m_blockStart;//资源分块的开始坐标
+	UINT64 m_blockSize;//资源分块的大小
+	UINT64 m_blockHasDownloadSize;//本分块已经下载的大小
 	BOOL m_isLastBlock;//标识是否是最后一个分块
 	HttpDownload* m_downloadInfor;//指示此线程隶属于哪个任务
 
