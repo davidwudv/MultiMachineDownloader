@@ -2,6 +2,8 @@
 #include "TaskConfigFile.h"
 #include "HttpDownload.h"
 
+class HttpDownload;
+
 class ThreadTask
 {
 public:

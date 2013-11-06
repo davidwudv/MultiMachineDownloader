@@ -19,11 +19,7 @@ ThreadTask::ThreadTask(HttpDownload* download):
 
 VOID ThreadTask::Release()
 {
-	if(m_downloadInfor)
-	{
-		delete m_downloadInfor;
-		m_downloadInfor = nullptr;
-	}
+	
 }
 
 ThreadTask::~ThreadTask(void)

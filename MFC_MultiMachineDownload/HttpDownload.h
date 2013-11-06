@@ -1,10 +1,14 @@
 #pragma once
 #include "TaskConfigFile.h"
 #include "CMultiMachineDownloadDlg.h"
+#include "ThreadTask.h"
 
+class CMultiMachineDownloadDlg;
+class ThreadTask;
 
 class HttpDownload
 {
+	friend class CMultiMachineDownloadDlg;
 public:
 	//HttpDownload(void);
 	//CHttpDownload(CTaskConfigFile*, CString,CString, CString, DWORD, INTERNET_PORT);
@@ -12,6 +16,7 @@ public:
 	~HttpDownload(void);
 
 	BOOL Download(TaskConfigFile*);
+	static BOOL QueryStatusCode(CString strResponse, UINT &dwStatus);
 	BOOL m_Stop;//暂停下载任务
 	BOOL m_Finished;//下载完成
 	CMultiMachineDownloadDlg* m_pWnd;//主窗口
@@ -30,8 +35,8 @@ private:
 	CCriticalSection m_cs;//临界区
 
 	BOOL GetInfor();//下载前准备,获取文件信息
-	static BOOL QueryStatusCode(CString strResponse, UINT &dwStatus);
 	static UINT ReceiveData(LPVOID);//开始接收数据
+	VOID WriteDataToFile(CFile& file, CHAR* buff, UINT writeSize, ThreadTask* pTask);
 	VOID Release();
 };
 

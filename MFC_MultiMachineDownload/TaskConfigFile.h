@@ -1,7 +1,7 @@
 #pragma once
 
-//#define DOWNLOADING 0
-//#define DOWNLOAD_FINISHED 1
+#define DOWNLOADING 0
+#define DOWNLOAD_FINISHED 1
 
 class TaskConfigFile: public CObject
 {
@@ -26,12 +26,11 @@ public:
 
 	//以字典映射记录各分块已下载的大小，key为分块的起始位置（字节），value为此分块已下载的大小
 	CMap<UINT64, UINT64&, UINT64, UINT64> m_mapBlockDownloadedSize;
-	BOOL AddDownloadedSize(UINT64& blockIndex, UINT64 blockDownloadedSize);
+	UINT AddDownloadedSize(UINT64& blockIndex, UINT64 blockDownloadedSize);
 	//UINT64 SetDownloadedSize();
 	
 
 	VOID Serialize(CArchive& ar);//序列化
-
 
 };
 

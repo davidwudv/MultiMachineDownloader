@@ -43,7 +43,7 @@ TaskConfigFile::~TaskConfigFile(void)
 {
 }
 
-BOOL TaskConfigFile::AddDownloadedSize( UINT64 &blockIndex, UINT64 blockDownloadedSize )
+UINT TaskConfigFile::AddDownloadedSize( UINT64 &blockIndex, UINT64 blockDownloadedSize )
 {
 	UINT64 oldValue;
 	UINT64 newValue;
@@ -53,8 +53,8 @@ BOOL TaskConfigFile::AddDownloadedSize( UINT64 &blockIndex, UINT64 blockDownload
 	m_lSumDownloadedSize += blockDownloadedSize;//更新已下载总大小
 
 	if(m_lSumDownloadedSize == m_lFileSize)
-		return TRUE;
-	return FALSE;
+		return DOWNLOAD_FINISHED;
+	return DOWNLOADING;
 }
 
 VOID TaskConfigFile::Serialize(CArchive& ar)

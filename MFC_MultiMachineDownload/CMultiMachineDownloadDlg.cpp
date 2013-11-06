@@ -70,6 +70,9 @@ void CMultiMachineDownloadDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_DOWNLOAD_OUTPUT_LIST, m_cListBoxDownloadOutPut);
 	DDX_Control(pDX, IDC_IP_LIST, m_cIPList);
 	DDX_Control(pDX, IDC_BUTTON_DELETEIP, m_cButtonDeleteIP);
+	DDX_Control(pDX, IDC_BUTTON_START, m_cButtonStart);
+	DDX_Control(pDX, IDC_BUTTON_Stop, m_cButtonStop);
+	DDX_Control(pDX, IDC_DOWNLOAD_PROGRESS, m_cProgress);
 }
 
 BEGIN_MESSAGE_MAP(CMultiMachineDownloadDlg, CDialogEx)
@@ -77,12 +80,13 @@ BEGIN_MESSAGE_MAP(CMultiMachineDownloadDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
 	ON_BN_CLICKED(IDC_BUTTON_START, &CMultiMachineDownloadDlg::OnClickedButtonStart)
-	ON_BN_CLICKED(IDC_BUTTON_SUSPEND, &CMultiMachineDownloadDlg::OnBnClickedButtonSuspend)
 	ON_MESSAGE(WM_USER_DOWNLOAD_FINISHED, OnDownloadFinished)
 	ON_BN_CLICKED(IDC_BUTTON_ADDIP, &CMultiMachineDownloadDlg::OnBnClickedButtonAddip)
 	ON_BN_CLICKED(IDC_BUTTON_DELETEIP, &CMultiMachineDownloadDlg::OnBnClickedButtonDeleteip)
 	ON_LBN_SETFOCUS(IDC_IP_LIST, &CMultiMachineDownloadDlg::OnLbnSetfocusIpList)
 	ON_LBN_SELCANCEL(IDC_IP_LIST, &CMultiMachineDownloadDlg::OnLbnSelcancelIpList)
+	ON_BN_CLICKED(IDC_BUTTON_Stop, &CMultiMachineDownloadDlg::OnBnClickedButtonStop)
+	ON_MESSAGE(WM_USER_DOWNLOAD_STOP, OnDownloadStop)
 END_MESSAGE_MAP()
 
 
@@ -122,6 +126,9 @@ BOOL CMultiMachineDownloadDlg::OnInitDialog()
 	m_strSavePath = "D:\\";
 	m_iThreads = 5;
 	m_cButtonDeleteIP.EnableWindow(FALSE);
+	m_cButtonStop.EnableWindow(FALSE);
+	m_cProgress.SetRange(0, 100);
+
 	UpdateData(FALSE);
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
@@ -182,21 +189,41 @@ void CMultiMachineDownloadDlg::OnClickedButtonStart()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	UpdateData(TRUE);
-	HttpDownload* myDownload = new HttpDownload(m_strURL, m_strSavePath, m_iThreads, this);
-	AfxBeginThread(threadFun, myDownload);
+	CFileFind finder;
+	 m_pDownloadTask = new HttpDownload(m_strURL, m_strSavePath, m_iThreads, this);
+	AfxBeginThread(threadFun, m_pDownloadTask);
+	m_cButtonStart.EnableWindow(FALSE);
+	m_cButtonStop.EnableWindow(TRUE);
 }
 
 
-void CMultiMachineDownloadDlg::OnBnClickedButtonSuspend()
+void CMultiMachineDownloadDlg::OnBnClickedButtonStop()
 {
-	
+	// TODO: 在此添加控件通知处理程序代码
+	m_pDownloadTask->m_Stop = TRUE;
+	m_cButtonStop.EnableWindow(FALSE);
+	m_cButtonStart.EnableWindow(TRUE);
 }
 
 LRESULT CMultiMachineDownloadDlg::OnDownloadFinished(WPARAM wParam, LPARAM lParam)
 {
 	HttpDownload* hd = (HttpDownload*)lParam;
 	::AfxMessageBox(_T("下载完成！"));
+	m_cButtonStart.EnableWindow(TRUE);
+	m_cButtonStop.EnableWindow(FALSE);
 	delete hd;
+
+	return 0;
+}
+
+LRESULT CMultiMachineDownloadDlg::OnDownloadStop(WPARAM wParam, LPARAM lParam)
+{
+	CFile configFile(m_pDownloadTask->m_strSavePath + ".conf", CFile::modeCreate | CFile::modeWrite | CFile::shareExclusive);
+	CArchive ar(&configFile, CArchive::store);
+	m_pDownloadTask->m_pConfigInfo->Serialize(ar);//保存文件信息
+	HttpDownload* hd = (HttpDownload*)lParam;
+	delete hd;
+
 	return 0;
 }
 
@@ -240,3 +267,5 @@ UINT threadFun(LPVOID lParam)
 
 	return 0;
 }
+
+

@@ -5,8 +5,12 @@
 #pragma once
 #include "afxwin.h"
 #include "resource.h"
-#define WM_USER_DOWNLOAD_FINISHED WM_USER + 0x100 //下载任务完成时发送的消息
+#include "HttpDownload.h"
+#include "afxcmn.h"
 
+#define WM_USER_DOWNLOAD_FINISHED WM_USER + 0x100 //下载任务完成时发送的消息
+#define WM_USER_DOWNLOAD_STOP WM_USER + 0x200//停止下载任务时发送的消息'
+class HttpDownload;
 
 // CMultiMachineDownloadDlg 对话框
 class CMultiMachineDownloadDlg : public CDialogEx
@@ -32,6 +36,7 @@ protected:
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
 	afx_msg LRESULT OnDownloadFinished(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnDownloadStop(WPARAM wParam, LPARAM lParam);
 	DECLARE_MESSAGE_MAP()
 public:
 	CString m_strURL;
@@ -39,11 +44,10 @@ public:
 	short m_iThreads;
 	CString m_strIP;
 	afx_msg void OnClickedButtonStart();
-	afx_msg void OnBnClickedButtonSuspend();
 	CListBox m_cListBoxDownloadOutPut;
 
 private:
-	//HttpDownload* TaskList
+	HttpDownload* m_pDownloadTask;
 public:
 	afx_msg void OnBnClickedButtonAddip();
 	CListBox m_cIPList;
@@ -51,4 +55,8 @@ public:
 	CButton m_cButtonDeleteIP;
 	afx_msg void OnLbnSetfocusIpList();
 	afx_msg void OnLbnSelcancelIpList();
+	CButton m_cButtonStart;
+	afx_msg void OnBnClickedButtonStop();
+	CButton m_cButtonStop;
+	CProgressCtrl m_cProgress;
 };

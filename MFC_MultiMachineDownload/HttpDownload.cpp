@@ -44,11 +44,14 @@ VOID HttpDownload::Release()
 		m_pConfigInfo = nullptr;
 	}
 
-	for(int i =0; i < m_sThreadsSum; ++i)
+	/*for(int i =0; i < m_sThreadsSum; ++i)
 	{
-		if(m_threadsList[i])
-			delete m_threadsList[i];
+	if(m_threadsList[i])
+	{
+	m_threadsList[i]->Delete();
+	m_threadsList[i] = nullptr;
 	}
+	}*/
 }
 
 //BOOL HttpDownload::GetInfor()
@@ -224,11 +227,33 @@ BOOL HttpDownload::GetInfor()
 	default:
 		return FALSE;
 	}
-	CFile configFile(m_strSavePath + ".conf", CFile::modeCreate | CFile::modeWrite);
-	CArchive ar(&configFile, CArchive::store);
-	m_pConfigInfo->Serialize(ar);
-	ar.Close();
-	configFile.Close();
+	
+	try
+	{
+		CFile configFile(m_strSavePath + ".conf", CFile::modeCreate | CFile::modeWrite);
+		CFile downloadFile(m_strSavePath, CFile::modeCreate | CFile::modeNoTruncate | CFile::modeWrite);
+		CArchive ar(&configFile, CArchive::store);
+		m_pConfigInfo->Serialize(ar);
+
+		downloadFile.SetLength(m_pConfigInfo->m_lFileSize);
+	}
+	catch (CMemoryException* e)
+	{
+		e->ReportError();
+		e->Delete();
+	}
+	catch (CFileException* e)
+	{
+		int erroCode = WSAGetLastError();
+		e->ReportError();
+		e->Delete();
+	}
+	catch (CException* e)
+	{
+		e->ReportError();
+		e->Delete();
+	}
+	
 
 	return TRUE;
 }
@@ -251,6 +276,7 @@ UINT HttpDownload::ReceiveData(LPVOID pParam)
 #endif
 	auto_ptr<ThreadTask> pTaskInfo(static_cast<ThreadTask*>(pParam));
 	CSocket socket;
+	//CSingleLock singleLock(&pTaskInfo->m_downloadInfor->m_cs);
 	CHAR buff[BUFFSIZE];
 	CStringA strRange;
 	UINT64 sizeValue(0);//本分块已下载的大小
@@ -311,11 +337,7 @@ UINT HttpDownload::ReceiveData(LPVOID pParam)
 		try
 		{
 			UINT dwRead(1);
-			BOOL downloadFinished(FALSE);
-			CSingleLock singleLock(&pTaskInfo->m_downloadInfor->m_cs);
 			CFile downloadFile(pTaskInfo->m_downloadInfor->m_pConfigInfo->m_strSavePath, CFile::modeCreate | CFile::modeNoTruncate | CFile::modeWrite | CFile::shareDenyNone );
-			CFile configFile(pTaskInfo->m_downloadInfor->m_pConfigInfo->m_strSavePath + ".conf", CFile::modeCreate | CFile::modeWrite | CFile::shareDenyNone);
-			CArchive ar(&configFile, CArchive::store);
 
 			downloadFile.Seek(start, CFile::begin);
 #ifdef DEBUG
@@ -326,7 +348,7 @@ UINT HttpDownload::ReceiveData(LPVOID pParam)
 				::ZeroMemory(buff, BUFFSIZE);//清空缓冲区
 				dwRead = socket.Receive(buff, BUFFSIZE);
 #ifdef DEBUG
-				//TRACE("Thread %d, received %d byte\n", dwThreadID, dwRead);
+				TRACE("Thread %d, received %d byte\n", dwThreadID, dwRead);
 #endif
 				if(dwRead < 0)
 				{
@@ -337,23 +359,22 @@ UINT HttpDownload::ReceiveData(LPVOID pParam)
 					return -1;
 				}
 
-				singleLock.Lock();//进入临界区
+				pTaskInfo->m_downloadInfor->m_cs.Lock();//进入临界区
 				downloadFile.Write(buff, dwRead);
-				downloadFinished = pTaskInfo->m_downloadInfor->m_pConfigInfo->AddDownloadedSize(pTaskInfo->m_blockStart, static_cast<UINT64>(dwRead));//更新已下载的大小
-#ifdef DEBUG
+				pTaskInfo->m_downloadInfor->m_Finished = pTaskInfo->m_downloadInfor->m_pConfigInfo->AddDownloadedSize(pTaskInfo->m_blockStart, static_cast<UINT64>(dwRead));//更新已下载的大小
 				float progress = 100 * ((float)pTaskInfo->m_downloadInfor->m_pConfigInfo->m_lSumDownloadedSize / pTaskInfo->m_downloadInfor->m_pConfigInfo->m_lFileSize);
-				//TRACE("Download progress: %%%.2f\n", progress);
+#ifdef DEBUG
+				TRACE("Download progress: %%%.2f\n", progress);
 #endif
-				singleLock.Unlock();//离开临界区
+				pTaskInfo->m_downloadInfor->m_pWnd->m_cProgress.SetPos(progress);
+				pTaskInfo->m_downloadInfor->m_cs.Unlock();//离开临界区
+				//pTaskInfo->m_downloadInfor->WriteDataToFile(downloadFile, buff, dwRead, pTaskInfo.get());
 			}
 
-			singleLock.Lock();
-			if(downloadFinished)
-				pTaskInfo->m_downloadInfor->m_Finished = TRUE;
-			pTaskInfo->m_downloadInfor->m_pConfigInfo->Serialize(ar);//保存文件信息
-			singleLock.Unlock();
+			if(pTaskInfo->m_downloadInfor->m_Stop)
+				::PostMessage(pTaskInfo->m_downloadInfor->m_pWnd->m_hWnd, WM_USER_DOWNLOAD_STOP, 0, (LPARAM)pTaskInfo->m_downloadInfor);
 			downloadFile.Close();
-			configFile.Close();
+			socket.Close();
 		}
 		catch (CMemoryException* e)
 		{
@@ -372,8 +393,26 @@ UINT HttpDownload::ReceiveData(LPVOID pParam)
 			e->Delete();
 		}
 	}
-	socket.Close();
+	
+	if(pTaskInfo->m_downloadInfor->m_Finished == TRUE)
+	{
+		::PostMessage(pTaskInfo->m_downloadInfor->m_pWnd->m_hWnd, WM_USER_DOWNLOAD_FINISHED, 0, (LPARAM)pTaskInfo->m_downloadInfor);
+	}
+	
 	return 0;
+}
+
+VOID HttpDownload::WriteDataToFile(CFile& file, CHAR* buff, UINT writeSize, ThreadTask* pTask)
+{
+	CSingleLock singleLock(&m_cs);
+	singleLock.Lock();//进入临界区
+	file.Write(buff, writeSize);
+	m_Finished = m_pConfigInfo->AddDownloadedSize(pTask->m_blockStart, static_cast<UINT64>(writeSize));//更新已下载的大小
+	float progress = 100 * ((float)pTask->m_downloadInfor->m_pConfigInfo->m_lSumDownloadedSize / pTask->m_downloadInfor->m_pConfigInfo->m_lFileSize);
+	m_pWnd->m_cProgress.SetPos(progress);
+#ifdef DEBUG
+	TRACE("Download progress: %%%.2f\n", progress);
+#endif
 }
 
 //UINT HttpDownload::ReceiveData(LPVOID pParam)
@@ -486,29 +525,70 @@ UINT HttpDownload::ReceiveData(LPVOID pParam)
 //	return 0;
 //}
 
-
-
 BOOL HttpDownload::Download(TaskConfigFile* configInfo)
 {
-	if(!GetInfor())
-	{
-		::AfxMessageBox(_T("无法获取文件信息，请确认下载链接是否有错。"));
-		return FALSE;
-	}
-	if(configInfo)
+	if(configInfo != nullptr)
 		m_pConfigInfo = configInfo;
+	else
+	{
+		CString strFileName;
+		int nPos = m_strURL.ReverseFind('/');
+		strFileName = m_strURL.Right(m_strURL.GetLength() - nPos - 1);
+		m_strSavePath += strFileName;
+
+		CFileFind finder;
+		if(finder.FindFile(m_strSavePath))
+		{
+			if(finder.FindFile(m_strSavePath + _T(".conf")))
+			{
+				m_pConfigInfo = new TaskConfigFile();
+				CFile configFile(m_strSavePath + _T(".conf"), CFile::modeRead);
+				CArchive ar(&configFile, CArchive::load);
+				m_pConfigInfo->Serialize(ar);
+				m_sThreadsSum = m_pConfigInfo->m_sThreadsSum;
+			}
+			else
+			{
+				AfxMessageBox(_T("此文件已经下载过了!\n"));
+			}
+		}
+		else if(!GetInfor())
+		{
+			::AfxMessageBox(_T("无法获取文件信息，请确认下载链接是否有错。"));
+			return FALSE;
+		}
+	}
+	
 	POSITION pos = m_pConfigInfo->m_mapBlockDownloadedSize.GetStartPosition();
 	for(SHORT i = 0; i < m_sThreadsSum; ++i)
 	{
-		ThreadTask* myTask = new ThreadTask(this);
-		myTask->m_blockSize = m_pConfigInfo->m_lBlockSize;
-		m_pConfigInfo->m_mapBlockDownloadedSize.GetNextAssoc(pos, myTask->m_blockStart, myTask->m_blockHasDownloadSize);
-		if(i == m_sThreadsSum -1)
-			myTask->m_isLastBlock = TRUE;
-		m_threadsList[i] = ::AfxBeginThread(ReceiveData, (LPVOID)myTask);
+		try
+		{
+			ThreadTask* myTask = new ThreadTask(this);
+			myTask->m_blockSize = m_pConfigInfo->m_lBlockSize;
+			m_pConfigInfo->m_mapBlockDownloadedSize.GetNextAssoc(pos, myTask->m_blockStart, myTask->m_blockHasDownloadSize);
+			if(i == m_sThreadsSum -1)
+				myTask->m_isLastBlock = TRUE;
+			m_threadsList[i] = ::AfxBeginThread(ReceiveData, (LPVOID)myTask);
 #ifdef DEBUG
-		TRACE("Thread %d start...\n", m_threadsList[i]->m_nThreadID);
+			TRACE("Thread %d start...\n", m_threadsList[i]->m_nThreadID);
 #endif
+		}
+		catch (CMemoryException* e)
+		{
+			e->ReportError();
+			e->Delete();
+		}
+		catch (CFileException* e)
+		{
+			e->ReportError();
+			e->Delete();
+		}
+		catch (CException* e)
+		{
+			e->ReportError();
+			e->Delete();
+		}
 	}
 	return TRUE;
 }
