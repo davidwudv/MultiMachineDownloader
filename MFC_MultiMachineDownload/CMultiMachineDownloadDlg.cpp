@@ -8,12 +8,12 @@
 #include "afxdialogex.h"
 #include "TaskConfigFile.h"
 #include "HttpDownload.h"
+#include "TaskConfig.h"
+#include "DownloadTask.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
-
-UINT threadFun(LPVOID lParam);
 
 // 用于应用程序“关于”菜单项的 CAboutDlg 对话框
 
@@ -56,8 +56,15 @@ CMultiMachineDownloadDlg::CMultiMachineDownloadDlg(CWnd* pParent /*=NULL*/)
 	, m_strSavePath(_T(""))
 	, m_iThreads(0)
 	, m_strIP(_T(""))
+	, m_pDownloadTask(nullptr)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+}
+
+CMultiMachineDownloadDlg::~CMultiMachineDownloadDlg()
+{
+	if(m_pDownloadTask != nullptr)
+		delete m_pDownloadTask;
 }
 
 void CMultiMachineDownloadDlg::DoDataExchange(CDataExchange* pDX)
@@ -123,6 +130,7 @@ BOOL CMultiMachineDownloadDlg::OnInitDialog()
 
 	// TODO: 在此添加额外的初始化代码
 	m_strURL = "http://dldir1.qq.com/qqfile/qq/QQ2013/QQ2013SP3/8557/QQ2013SP3.exe";
+	//m_strURL = "http://127.0.0.1/fuck.exe";
 	m_strSavePath = "D:\\";
 	m_iThreads = 5;
 	m_cButtonDeleteIP.EnableWindow(FALSE);
@@ -189,9 +197,9 @@ void CMultiMachineDownloadDlg::OnClickedButtonStart()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	UpdateData(TRUE);
-	CFileFind finder;
-	 m_pDownloadTask = new HttpDownload(m_strURL, m_strSavePath, m_iThreads, this);
-	AfxBeginThread(threadFun, m_pDownloadTask);
+	TaskConfig* taskConfig = new TaskConfig(m_strURL, m_iThreads);
+	m_pDownloadTask = new DownloadTask(m_strSavePath, taskConfig);
+	m_pDownloadTask->Start();
 	m_cButtonStart.EnableWindow(FALSE);
 	m_cButtonStop.EnableWindow(TRUE);
 }
@@ -200,7 +208,7 @@ void CMultiMachineDownloadDlg::OnClickedButtonStart()
 void CMultiMachineDownloadDlg::OnBnClickedButtonStop()
 {
 	// TODO: 在此添加控件通知处理程序代码
-	m_pDownloadTask->m_Stop = TRUE;
+	m_pDownloadTask->Stop();
 	m_cButtonStop.EnableWindow(FALSE);
 	m_cButtonStart.EnableWindow(TRUE);
 }
@@ -212,17 +220,18 @@ LRESULT CMultiMachineDownloadDlg::OnDownloadFinished(WPARAM wParam, LPARAM lPara
 	m_cButtonStart.EnableWindow(TRUE);
 	m_cButtonStop.EnableWindow(FALSE);
 	delete hd;
-
 	return 0;
 }
 
 LRESULT CMultiMachineDownloadDlg::OnDownloadStop(WPARAM wParam, LPARAM lParam)
 {
-	CFile configFile(m_pDownloadTask->m_strSavePath + ".conf", CFile::modeCreate | CFile::modeWrite | CFile::shareExclusive);
-	CArchive ar(&configFile, CArchive::store);
-	m_pDownloadTask->m_pConfigInfo->Serialize(ar);//保存文件信息
-	HttpDownload* hd = (HttpDownload*)lParam;
-	delete hd;
+	//CFile configFile(m_pDownloadTask->m_strSavePath + ".conf", CFile::modeCreate | CFile::modeWrite | CFile::shareExclusive);
+	//CArchive ar(&configFile, CArchive::store);
+	//m_pDownloadTask->m_pConfigInfo->Serialize(ar);//保存文件信息
+	//ar.Close();
+	//configFile.Close();
+	//HttpDownload* hd = (HttpDownload*)lParam;
+	//delete hd;
 
 	return 0;
 }
@@ -253,19 +262,10 @@ void CMultiMachineDownloadDlg::OnLbnSetfocusIpList()
 	m_cButtonDeleteIP.EnableWindow(TRUE);
 }
 
-
 void CMultiMachineDownloadDlg::OnLbnSelcancelIpList()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	m_cButtonDeleteIP.EnableWindow(FALSE);
-}
-
-UINT threadFun(LPVOID lParam)
-{
-	HttpDownload* download = static_cast<HttpDownload*>(lParam);
-	download->Download(nullptr);
-
-	return 0;
 }
 
 

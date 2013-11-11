@@ -5,7 +5,7 @@
 #pragma once
 #include "afxwin.h"
 #include "resource.h"
-#include "HttpDownload.h"
+#include "DownloadTask.h"
 #include "afxcmn.h"
 
 #define WM_USER_DOWNLOAD_FINISHED WM_USER + 0x100 //下载任务完成时发送的消息
@@ -18,6 +18,7 @@ class CMultiMachineDownloadDlg : public CDialogEx
 // 构造
 public:
 	CMultiMachineDownloadDlg(CWnd* pParent = NULL);	// 标准构造函数
+	~CMultiMachineDownloadDlg();
 
 // 对话框数据
 	enum { IDD = IDD_MFC_MULTIMACHINEDOWNLOAD_DIALOG };
@@ -47,7 +48,7 @@ public:
 	CListBox m_cListBoxDownloadOutPut;
 
 private:
-	HttpDownload* m_pDownloadTask;
+	DownloadTask* m_pDownloadTask;
 public:
 	afx_msg void OnBnClickedButtonAddip();
 	CListBox m_cIPList;
