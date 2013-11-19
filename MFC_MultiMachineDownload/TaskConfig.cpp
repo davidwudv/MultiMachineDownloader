@@ -1,6 +1,5 @@
 #include "stdafx.h"
 #include "TaskConfig.h"
-#include <tchar.h>
 
 #define HTTP_STATUS_REQUESTED_RANGE_NOT_SATISFIABLE 416//不支持断点续传
 using std::auto_ptr;
@@ -64,7 +63,7 @@ bool TaskConfig::InitConfig()
 		pHttpConnection.reset(session.GetHttpConnection(m_strServer, INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_TRANSFER_ASCII, m_nPort));
 		pHttpFile.reset(pHttpConnection->OpenRequest(CHttpConnection::HTTP_VERB_HEAD, m_strObject));
 		if(m_bSupportResume == true)
-			pHttpFile->AddRequestHeaders(_T("Range: bytes=10-\r\n"));
+			pHttpFile->AddRequestHeaders(_T("Range: bytes=100-\r\n"));
 		pHttpFile->AddRequestHeaders(_T("Pragma: no-cache\r\n"));
 		pHttpFile->AddRequestHeaders(_T("Connection: close\r\n"));
 		pHttpFile->AddRequestHeaders(_T("Accept: */*\r\n"));
@@ -82,10 +81,7 @@ bool TaskConfig::InitConfig()
 			CString strFileLength;
 			m_strFileName = pHttpFile->GetFileName();
 			pHttpFile->QueryInfo(HTTP_QUERY_CONTENT_LENGTH, strFileLength);
-			if(m_bSupportResume == true)
-				m_ulFileLength = _ttoi64(strFileLength) + 10;
-			else
-				m_ulFileLength = _ttoi64(strFileLength);
+			m_ulFileLength = _ttoi64(strFileLength);
 			InitBlockInfo();
 		}
 		else if(dwStatusCode == HTTP_STATUS_REQUESTED_RANGE_NOT_SATISFIABLE)
@@ -144,11 +140,11 @@ void TaskConfig::InitBlockInfo()
 				block = new Block(0ULL, blockSize);
 			else if(i == m_sThreadsSum - 1)
 			{
-				block = new Block(i * blockSize + 1, lastBlockSize);
+				block = new Block(i * blockSize, lastBlockSize);
 				block->m_bIsLastBlock = true;
 			}
 			else
-				block = new Block(i * blockSize + 1, blockSize);
+				block = new Block(i * blockSize, blockSize);
 			m_block[i] = block;
 		}
 	}
@@ -180,7 +176,7 @@ void TaskConfig::LoadFromFile(CString strPath)
 {
 	try
 	{
-		CFile file(strPath, CFile::modeCreate | CFile::modeRead);
+		CFile file(strPath, CFile::modeRead);
 		CArchive ar(&file, CArchive::load);
 		this->Serialize(ar);
 		ar.Close();

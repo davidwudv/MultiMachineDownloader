@@ -1,4 +1,5 @@
 #pragma once
+#include <tchar.h>
 
 class Block
 {
@@ -24,10 +25,9 @@ public:
 	CString GetDownloadLink() { return m_strLink; }
 	CString GetFileName() { return m_strFileName; }
 	UINT64 GetFileLength() { return m_ulFileLength; }
-	//UINT64 GetDownloadedSize() { return m_ulSumDownloadedSize; }
 	SHORT GetDownloadThreadsSum() { return m_sThreadsSum; }
 	CString GetObjectString() { return m_strObject; }
-	CString GetServerString(){ return m_strServer; }
+	CString GetServerString() { return m_strServer; }
 	DWORD GetServiceType() { return m_dwServiceType; }
 	INTERNET_PORT GetPort() { return m_nPort; }
 	void SaveToFile(CString strPath);

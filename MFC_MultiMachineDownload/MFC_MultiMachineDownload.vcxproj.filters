@@ -33,13 +33,13 @@
     <ClInclude Include="Resource.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Download.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="TaskConfig.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="DownloadTask.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="HttpDownload.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
@@ -53,13 +53,13 @@
     <ClCompile Include="stdafx.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Download.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="TaskConfig.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="DownloadTask.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="HttpDownload.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

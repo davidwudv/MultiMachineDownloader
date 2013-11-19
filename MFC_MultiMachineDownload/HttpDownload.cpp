@@ -17,19 +17,22 @@ HttpDownload::~HttpDownload(void)
 
 int HttpDownload::StartEx()
 {
-	CSocket socket;
-	int timeOut = 5000;//5s
-	socket.SetSockOpt(SO_RCVTIMEO, &timeOut, sizeof(int));
+	int errorCode(1);
 	CSingleLock singleLock(&m_downloadTask->m_cs);
 	CSingleLock singleLock2(&m_downloadTask->m_cs2);
-	CHAR buff[BUFFSIZE + 1];
-	UINT nStatusCode(0);
-	int errorCode(1);
+	CStringA strObject(m_config->GetObjectString());
+	CStringA strServer(m_config->GetServerString());
+	INTERNET_PORT nPort(m_config->GetPort());
 	UINT64 start(m_config->m_block[m_currentThreadIndex]->m_ulStart + m_config->m_block[m_currentThreadIndex]->m_ulDownloadedSize);
 	UINT64 end(m_config->m_block[m_currentThreadIndex]->m_ulStart + m_config->m_block[m_currentThreadIndex]->m_ulBlockSize - 1);
 	int blockSize(m_config->m_block[m_currentThreadIndex]->m_ulBlockSize - m_config->m_block[m_currentThreadIndex]->m_ulDownloadedSize);
-	CStringA strObject(m_config->GetObjectString());
-	CStringA strServer(m_config->GetServerString());
+	if(blockSize == 0)
+		return errorCode;
+
+	int timeOut = 3000;//3s
+	m_socket.SetSockOpt(SO_RCVTIMEO, &timeOut, sizeof(int));
+	CHAR buff[BUFFSIZE + 1];
+	UINT nStatusCode(0);
 begin:
 	/**** 构造Request head ****/
 	CStringA strRequest("GET " + strObject + " HTTP/1.1\r\n"
@@ -51,10 +54,10 @@ begin:
 	}
 	strRequest += "\r\n";
 
-	if(socket.m_hSocket != NULL)
-		socket.Close();
-	socket.Create();
-	if(!socket.Connect(m_config->GetServerString(), m_config->GetPort()))
+	if(m_socket.m_hSocket != NULL)
+		m_socket.Close();
+	m_socket.Create();
+	if(!m_socket.Connect(CString(strServer), nPort))
 	{
 		errorCode = ::WSAGetLastError();
 		::AfxMessageBox(_T("socket connect error! error code: %d\n"), errorCode);
@@ -64,12 +67,12 @@ begin:
 	else
 		TRACE("Connected.\n");
 #endif
-	int result = socket.Send(strRequest, strRequest.GetLength());
+	int result = m_socket.Send(strRequest, strRequest.GetLength());
 #ifdef DEBUG
 	TRACE("Request has been send, size: %d Byte\n", result);
 #endif
 	::ZeroMemory(buff, BUFFSIZE + 1);
-	int receviedSize = socket.Receive(buff, BUFFSIZE);
+	int receviedSize = m_socket.Receive(buff, BUFFSIZE);
 #ifdef DEBUG
 	TRACE("Received %d resposen.\n", receviedSize);
 #endif
@@ -139,20 +142,18 @@ begin:
 #ifdef DEBUG
 		CString str;
 		str.Format(_T("Thread %d begin receive data..."), m_currentThreadIndex);
-		singleLock2.Lock();
 		m_downloadTask->m_masterDialog->m_cListBoxDownloadOutPut.InsertString(0, str);
-		singleLock2.Unlock();
 #endif
 		while(receviedSize > 0)
 		{
 			::ZeroMemory(buff, BUFFSIZE + 1);
-			/*** 每次固定接收BUFFSIZE bytes, 若余下部分小于BUFFSIZE就只接收余下的bytes ***/
+			/*** 每次固定接收BUFFSIZE bytes, 若余下部分小于BUFFSIZE就只接收余下的bytes, 这样可以避免ERROR_INVALID_USER_BUFFER ***/
 			readSize = blockSize > BUFFSIZE ? BUFFSIZE : blockSize;
-			receviedSize = socket.Receive(buff, readSize);
+			receviedSize = m_socket.Receive(buff, readSize);
 			readSize -= receviedSize;
 			while(readSize && (receviedSize > 0))
 			{
-				int rs = socket.Receive(buff + receviedSize, readSize);
+				int rs = m_socket.Receive(buff + receviedSize, readSize);
 				if(rs == 0)//连接被中断
 					break;
 				else if(rs == SOCKET_ERROR)//出错
@@ -168,7 +169,7 @@ begin:
 			{
 				blockSize -= receviedSize;
 #ifdef DEBUG
-				TRACE("Thread %d: Receive %d,", m_currentThreadIndex, receviedSize);
+				TRACE("Thread %d: Receive %d bytes,", m_currentThreadIndex, receviedSize);
 #endif
 				singleLock.Lock();//进入临界区
 				downloadFile.Write(buff, receviedSize);
@@ -182,20 +183,24 @@ begin:
 #ifdef DEBUG
 				TRACE(" downloaded %.2f%%\n", downloadPercent);
 #endif
+				if(m_downloadTask->GetCurrentThreadSum() > 1)
+					Sleep(100);//让出时间片
 			}
+			singleLock2.Lock();
 			if(m_downloadTask->IsStop())
 				break;
+			singleLock2.Unlock();
 		}
 		downloadFile.Close();
 		
 		/*if(errorCode == WSAECONNRESET || errorCode == WSAENOTCONN)
 		goto begin;*/
 	}
-	catch (CInternetException* e)
+	/*catch (CInternetException* e)
 	{
 		errorCode = WSAGetLastError();
 		e->Delete();
-	}
+	}*/
 	catch (CFileException* e)
 	{
 		errorCode = WSAGetLastError();
@@ -208,9 +213,9 @@ begin:
 		e->ReportError();
 		e->Delete();
 	}
-	socket.Close();
+	m_socket.Close();
 
-	if((receviedSize <= 0) && (blockSize > 0))//连接被中断，但未下载完成
+	if( (receviedSize <= 0) && (blockSize > 0) && (!m_downloadTask->IsStop()) )//连接被中断，但未下载完成
 		errorCode = WSAGetLastError();
 #ifdef DEBUG
 		CString str;
@@ -218,8 +223,8 @@ begin:
 			str.Format(_T("Thread %d WSAENOTCONN!"), m_currentThreadIndex);
 		else if(errorCode == WSAECONNRESET)
 			str.Format(_T("Thread %d WSAECONNRESET!"), m_currentThreadIndex);
-		else if(errorCode == ERROR_INTERNET_TIMEOUT)
-			str.Format(_T("Thread %d ERROR_INTERNET_TIMEOUT!"), m_currentThreadIndex);
+		/*else if(errorCode == ERROR_INTERNET_TIMEOUT)
+			str.Format(_T("Thread %d ERROR_INTERNET_TIMEOUT!"), m_currentThreadIndex);*/
 		else if(errorCode == 1)
 		{
 			if(blockSize == 0)
@@ -229,9 +234,7 @@ begin:
 		}
 		else
 			str.Format(_T("Thread %d has been stop but unknown why."), m_currentThreadIndex);
-		singleLock2.Lock();
 		m_downloadTask->m_masterDialog->m_cListBoxDownloadOutPut.InsertString(0, str);
-		singleLock2.Unlock();
 #endif
 	return errorCode;
 }
@@ -280,16 +283,12 @@ int HttpDownload::Start()
 #ifdef DEBUG
 		CString str;
 		str.Format(_T("Thread %d begin send request"), m_currentThreadIndex);
-		singleLock2.Lock();
 		m_downloadTask->m_masterDialog->m_cListBoxDownloadOutPut.InsertString(0, str);
-		singleLock2.Unlock();
 #endif
 		pHttpFile->SendRequest();
 #ifdef DEBUG
 		str.Format(_T("Thread %d end send request"), m_currentThreadIndex);
-		singleLock2.Lock();
 		m_downloadTask->m_masterDialog->m_cListBoxDownloadOutPut.InsertString(0, str);
-		singleLock2.Unlock();
 #endif
 		pHttpFile->QueryInfoStatusCode(dwStatusCode);
 		if(dwStatusCode >= 200 && dwStatusCode < 300)
@@ -300,29 +299,34 @@ int HttpDownload::Start()
 			downloadFile.Seek(start, CFile::begin);
 #ifdef DEBUG
 			str.Format(_T("Thread %d begin receive data..."), m_currentThreadIndex);
-			singleLock2.Lock();
 			m_downloadTask->m_masterDialog->m_cListBoxDownloadOutPut.InsertString(0, str);
-			singleLock2.Unlock();
 #endif
 			while(readSize)
 			{
 				ZeroMemory(receiveBuff, BUFFSIZE + 1);
 				readSize = pHttpFile->Read(receiveBuff, BUFFSIZE);
-				singleLock.Lock();//进入临界区
-				downloadFile.Write(receiveBuff, readSize);
-				m_config->m_block[m_currentThreadIndex]->m_ulDownloadedSize += readSize;//更新本分块已下载大小
-				m_config->m_ulSumDownloadedSize += readSize;//更新已下载总大小
-				if(m_config->m_ulSumDownloadedSize == m_config->GetFileLength())
-					m_downloadTask->m_bFinished = true;//下载完成
-				float downloadPercent;
-				downloadPercent = 100 * ((float)m_config->m_ulSumDownloadedSize / m_config->GetFileLength());
-				m_downloadTask->m_masterDialog->m_cProgress.SetPos(downloadPercent);
+				if(readSize > 0)
+				{
+					singleLock.Lock();//进入临界区
+					downloadFile.Write(receiveBuff, readSize);
+					m_config->m_block[m_currentThreadIndex]->m_ulDownloadedSize += readSize;//更新本分块已下载大小
+					m_config->m_ulSumDownloadedSize += readSize;//更新已下载总大小
+					if(m_config->m_ulSumDownloadedSize == m_config->GetFileLength())
+						m_downloadTask->m_bFinished = true;//下载完成
+					float downloadPercent;
+					downloadPercent = 100 * ((float)m_config->m_ulSumDownloadedSize / m_config->GetFileLength());
+					m_downloadTask->m_masterDialog->m_cProgress.SetPos(downloadPercent);
 #ifdef DEBUG
-				TRACE("Thread %d: Receive %d, downloaded %.2f%%\n", m_currentThreadIndex, readSize, downloadPercent);
+					TRACE("Thread %d: Receive %d, downloaded %.2f%%\n", m_currentThreadIndex, readSize, downloadPercent);
 #endif
-				singleLock.Unlock();//离开临界区
+					singleLock.Unlock();//离开临界区
+					if(m_downloadTask->GetCurrentThreadSum() > 1)
+						Sleep(100);//让出时间片
+				}
+				singleLock2.Lock();
 				if(m_downloadTask->IsStop())
 					break;
+				singleLock2.Unlock();
 			}
 			downloadFile.Close();
 		}
@@ -365,9 +369,7 @@ int HttpDownload::Start()
 		str.Format(_T("Thread %d ERROR_INTERNET_TIMEOUT!"), m_currentThreadIndex);
 	else
 		str.Format(_T("Thread %d has been stop but unknown why!"), m_currentThreadIndex);
-	singleLock2.Lock();
 	m_downloadTask->m_masterDialog->m_cListBoxDownloadOutPut.InsertString(0, str);
-	singleLock2.Unlock();
 #endif
 	return errorCode;
 }

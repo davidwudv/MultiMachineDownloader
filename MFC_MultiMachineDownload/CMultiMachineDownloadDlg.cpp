@@ -6,15 +6,15 @@
 #include "MFC_MultiMachineDownload.h"
 #include "CMultiMachineDownloadDlg.h"
 #include "afxdialogex.h"
-#include "TaskConfigFile.h"
-#include "HttpDownload.h"
 #include "TaskConfig.h"
 #include "DownloadTask.h"
+#include "HttpDownload.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
+int Exist(CString strPath);
 // 用于应用程序“关于”菜单项的 CAboutDlg 对话框
 
 class CAboutDlg : public CDialogEx
@@ -94,6 +94,7 @@ BEGIN_MESSAGE_MAP(CMultiMachineDownloadDlg, CDialogEx)
 	ON_LBN_SELCANCEL(IDC_IP_LIST, &CMultiMachineDownloadDlg::OnLbnSelcancelIpList)
 	ON_BN_CLICKED(IDC_BUTTON_Stop, &CMultiMachineDownloadDlg::OnBnClickedButtonStop)
 	ON_MESSAGE(WM_USER_DOWNLOAD_STOP, OnDownloadStop)
+	ON_EN_CHANGE(IDC_EDIT_URL, &CMultiMachineDownloadDlg::OnEnChangeEditUrl)
 END_MESSAGE_MAP()
 
 
@@ -129,10 +130,12 @@ BOOL CMultiMachineDownloadDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// 设置小图标
 
 	// TODO: 在此添加额外的初始化代码
-	m_strURL = "http://dldir1.qq.com/qqfile/qq/QQ2013/QQ2013SP3/8557/QQ2013SP3.exe";
+	//m_strURL = "http://dldir1.qq.com/qqfile/qq/QQ2013/QQ2013SP3/8557/QQ2013SP3.exe";
 	//m_strURL = "http://127.0.0.1/fuck.exe";
-	m_strSavePath = "D:\\";
-	m_iThreads = 5;
+	m_strURL = "http://skype.tom.com/download/SkypeSetup.exe";
+	//m_strSavePath = "D:\\QQ2013SP3.exe";
+	m_strSavePath = "D:\\SkypeSetup.exe";
+	m_iThreads = 2;
 	m_cButtonDeleteIP.EnableWindow(FALSE);
 	m_cButtonStop.EnableWindow(FALSE);
 	m_cProgress.SetRange(0, 100);
@@ -197,8 +200,21 @@ void CMultiMachineDownloadDlg::OnClickedButtonStart()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	UpdateData(TRUE);
-	TaskConfig* taskConfig = new TaskConfig(m_strURL, m_iThreads);
-	m_pDownloadTask = new DownloadTask(m_strSavePath, taskConfig);
+	TaskConfig* taskConfig(nullptr);
+	int exist = Exist(m_strSavePath);
+	if(exist == 0)
+	{
+		taskConfig = new TaskConfig();
+		taskConfig->LoadFromFile(m_strSavePath + _T(".conf"));
+	}
+	else if(exist == 1)
+	{
+		AfxMessageBox(_T("此文件已经下载过了!\n"));
+		return;
+	}
+	else
+		taskConfig = new TaskConfig(m_strURL, m_iThreads);
+	m_pDownloadTask = new DownloadTask(m_strSavePath, taskConfig, this);
 	m_pDownloadTask->Start();
 	m_cButtonStart.EnableWindow(FALSE);
 	m_cButtonStop.EnableWindow(TRUE);
@@ -209,30 +225,33 @@ void CMultiMachineDownloadDlg::OnBnClickedButtonStop()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	m_pDownloadTask->Stop();
-	m_cButtonStop.EnableWindow(FALSE);
-	m_cButtonStart.EnableWindow(TRUE);
 }
 
 LRESULT CMultiMachineDownloadDlg::OnDownloadFinished(WPARAM wParam, LPARAM lParam)
 {
-	HttpDownload* hd = (HttpDownload*)lParam;
-	::AfxMessageBox(_T("下载完成！"));
+	DownloadTask* myTask = (DownloadTask*)(lParam);
+	if(myTask->GetCurrentThreadSum() == 0)
+		delete myTask;
+	AfxMessageBox(_T("下载完成！"));
+	/*******待修改*********/
+	m_pDownloadTask = nullptr;
+
 	m_cButtonStart.EnableWindow(TRUE);
 	m_cButtonStop.EnableWindow(FALSE);
-	delete hd;
 	return 0;
 }
 
 LRESULT CMultiMachineDownloadDlg::OnDownloadStop(WPARAM wParam, LPARAM lParam)
 {
-	//CFile configFile(m_pDownloadTask->m_strSavePath + ".conf", CFile::modeCreate | CFile::modeWrite | CFile::shareExclusive);
-	//CArchive ar(&configFile, CArchive::store);
-	//m_pDownloadTask->m_pConfigInfo->Serialize(ar);//保存文件信息
-	//ar.Close();
-	//configFile.Close();
-	//HttpDownload* hd = (HttpDownload*)lParam;
-	//delete hd;
-
+	DownloadTask* myTask = (DownloadTask*)(lParam);
+	if(myTask->GetCurrentThreadSum() == 0)
+	{
+		delete myTask;
+		/*******待修改*********/
+		m_pDownloadTask = nullptr;
+		m_cButtonStop.EnableWindow(FALSE);
+		m_cButtonStart.EnableWindow(TRUE);
+	}
 	return 0;
 }
 
@@ -269,3 +288,38 @@ void CMultiMachineDownloadDlg::OnLbnSelcancelIpList()
 }
 
 
+
+
+void CMultiMachineDownloadDlg::OnEnChangeEditUrl()
+{
+	// TODO:  如果该控件是 RICHEDIT 控件，它将不
+	// 发送此通知，除非重写 CDialogEx::OnInitDialog()
+	// 函数并调用 CRichEditCtrl().SetEventMask()，
+	// 同时将 ENM_CHANGE 标志“或”运算到掩码中。
+
+	// TODO:  在此添加控件通知处理程序代码
+	/*CString strFileName;
+	int nPos = m_strURL.ReverseFind('/');
+	if(nPos > 0)
+		strFileName = m_strURL.Right(m_strURL.GetLength() - nPos - 1);
+	m_strSavePath += strFileName;
+	UpdateData(FALSE);*/
+}
+
+/************************************************************************/
+/* 返回0表示此文件曾经下载过但未下载完成；    */
+/* 返回1表示此文件曾经下载过且已经下载完成；*/
+/* 返回-1表示此文件从未下载过；                        */
+/************************************************************************/
+int Exist(CString strPath)
+{
+	CFileFind finder;
+	if(finder.FindFile(strPath))
+	{
+		if(finder.FindFile(strPath + _T(".conf")))
+			return 0;
+		else
+			return 1;
+	}
+	return -1;
+}

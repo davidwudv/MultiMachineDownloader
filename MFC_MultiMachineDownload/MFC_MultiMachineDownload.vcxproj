@@ -102,7 +102,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CMultiMachineDownloadDlg.h" />
-    <ClInclude Include="Download.h" />
+    <ClInclude Include="HttpDownload.h" />
     <ClInclude Include="DownloadTask.h" />
     <ClInclude Include="MFC_MultiMachineDownload.h" />
     <ClInclude Include="Resource.h" />
@@ -112,7 +112,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CMultiMachineDownloadDlg.cpp" />
-    <ClCompile Include="Download.cpp" />
+    <ClCompile Include="HttpDownload.cpp" />
     <ClCompile Include="DownloadTask.cpp" />
     <ClCompile Include="MFC_MultiMachineDownload.cpp" />
     <ClCompile Include="stdafx.cpp">

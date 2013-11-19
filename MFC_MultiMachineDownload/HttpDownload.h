@@ -1,6 +1,8 @@
 #pragma once
 #include "DownloadTask.h"
 
+class DownloadTask;
+
 class HttpDownload
 {
 public:
@@ -15,6 +17,7 @@ private:
 public:
 	DownloadTask* m_downloadTask;//标识隶属于哪一个下载任务
 	TaskConfig* m_config;//任务配置信息
+	CSocket m_socket;
 	short m_currentThreadIndex;//当前线程的索引
 	
 private:

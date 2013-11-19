@@ -10,7 +10,8 @@
 
 #define WM_USER_DOWNLOAD_FINISHED WM_USER + 0x100 //下载任务完成时发送的消息
 #define WM_USER_DOWNLOAD_STOP WM_USER + 0x200//停止下载任务时发送的消息'
-class HttpDownload;
+
+class DownloadTask;
 
 // CMultiMachineDownloadDlg 对话框
 class CMultiMachineDownloadDlg : public CDialogEx
@@ -44,20 +45,21 @@ public:
 	CString m_strSavePath;
 	short m_iThreads;
 	CString m_strIP;
-	afx_msg void OnClickedButtonStart();
+	CListBox m_cIPList;
 	CListBox m_cListBoxDownloadOutPut;
+	CButton m_cButtonDeleteIP;
+	CButton m_cButtonStart;
+	CButton m_cButtonStop;
+	CProgressCtrl m_cProgress;
 
 private:
 	DownloadTask* m_pDownloadTask;
 public:
 	afx_msg void OnBnClickedButtonAddip();
-	CListBox m_cIPList;
+	afx_msg void OnClickedButtonStart();
 	afx_msg void OnBnClickedButtonDeleteip();
-	CButton m_cButtonDeleteIP;
 	afx_msg void OnLbnSetfocusIpList();
 	afx_msg void OnLbnSelcancelIpList();
-	CButton m_cButtonStart;
 	afx_msg void OnBnClickedButtonStop();
-	CButton m_cButtonStop;
-	CProgressCtrl m_cProgress;
+	afx_msg void OnEnChangeEditUrl();
 };
